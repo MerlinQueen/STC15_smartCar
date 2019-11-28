@@ -1,0 +1,266 @@
+C51 COMPILER V9.59.0.0   MAIN                                                              05/10/2019 12:23:30 PAGE 1   
+
+
+C51 COMPILER V9.59.0.0, COMPILATION OF MODULE MAIN
+OBJECT MODULE PLACED IN .\Objects\main.obj
+COMPILER INVOKED BY: f:\Keil_v5\C51\BIN\C51.EXE user\main.c OPTIMIZE(8,SPEED) BROWSE DEBUG OBJECTEXTEND PRINT(.\Listings
+                    -\main.lst) OBJECT(.\Objects\main.obj)
+
+line level    source
+
+   1          #include <STC15.h>
+   2          #include "pwm.h"
+   3          #include "delay.h"
+   4          #include "ADC.h"
+   5          #include "OLED_SPI_hardware.h"
+   6          #include "public.h"
+   7          #include "timer.h"
+   8          
+   9          sbit led1 = P5 ^ 0;
+  10          sbit led2 = P5 ^ 1;
+  11          sbit LED = P5 ^ 2;
+  12          sbit Stop_Car = P0 ^ 5; // 霍尔开关或者干簧管引脚, 检测停止位
+  13          sbit KEY_Start = P2 ^ 0;
+  14          volatile u8 countt, OnFlag = 0; // countt记录第几次检测到停止信号(也就是跑了多少圈),OnFlag启动标志位
+  15          
+  16          u8 AD_Buffer[3];  // 保存AD采集到的数据(10位AD最大1023),可用于发送给OLED显示
+  17          u8 AD_Left[4];  // 左侧电感采样值
+  18          u8 AD_Mid[4];   // 中间电感采样值
+  19          u8 AD_Right[4];   //左侧电感采样值
+  20          
+  21          void GPIO_Init(void);  // GPIO初始
+  22          void ADC_Sample(void);  // ADC数据采集
+  23          void Runing(void);      // 启动函数
+  24          void Tracking(void);    // 寻迹函数,判断是否偏离轨道
+  25          
+  26          
+  27          
+  28          void GPIO_Init(void)
+  29          {
+  30   1              P0M0 = 0x00;
+  31   1              P0M1 = 0x00;
+  32   1              P1M0 = 0x00;
+  33   1              P1M1 = 0x00;
+  34   1              P2M0 = 0x00;
+  35   1              P2M1 = 0x00;
+  36   1              P3M0 = 0x00;
+  37   1              P3M1 = 0x00;
+  38   1              P4M0 = 0x00;
+  39   1              P4M1 = 0x00;
+  40   1              P5M0 = 0x00;
+  41   1              P5M1 = 0x00;
+  42   1      
+  43   1      }
+  44          
+  45          void ADC_Sample(void)  // 把三路电感传感器检测到的,电压采样求取平均值
+  46          {
+  47   1              AD_Left[1] = getADC10bitResult(0); // 左电感电压
+  48   1              AD_Left[2] = getADC10bitResult(0); // 左电感电压
+  49   1              AD_Left[3] = getADC10bitResult(0); // 左电感电压
+  50   1              AD_Left[0] = (AD_Left[1] + AD_Left[2] + AD_Left[3]) / 3; // 求平均值
+  51   1      
+  52   1              AD_Mid[1] = getADC10bitResult(1); // 中间电感电压
+  53   1              AD_Mid[2] = getADC10bitResult(1); // 中间电感电压
+  54   1              AD_Mid[3] = getADC10bitResult(1); // 中间电感电压
+C51 COMPILER V9.59.0.0   MAIN                                                              05/10/2019 12:23:30 PAGE 2   
+
+  55   1              AD_Mid[0] = (AD_Mid[1] + AD_Mid[2] + AD_Mid[3]) / 3;
+  56   1      
+  57   1              AD_Right[1] = getADC10bitResult(2); // 右侧电感电压
+  58   1              AD_Right[2] = getADC10bitResult(2); // 右侧电感电压
+  59   1              AD_Right[3] = getADC10bitResult(2); // 右侧电感电压
+  60   1              AD_Right[0] = (AD_Right[1] + AD_Right[2] + AD_Right[3]) / 3;
+  61   1      }
+  62          
+  63          void Runing(void)
+  64          {
+  65   1              if (KEY_Start == 0)
+  66   1              {
+  67   2                      DelayMS(15); // 消抖
+  68   2                      if (KEY_Start == 0)
+  69   2                      {
+  70   3                              OnFlag = 1;
+  71   3                              LED = 0;    // 小车启动提示LED灯
+  72   3                              TR0 = 1;   //定时器0开始计时
+  73   3                      }
+  74   2              }
+  75   1              if (OnFlag == 1)
+  76   1              {
+  77   2                      if (Stop_Car == 0)
+  78   2                      {
+  79   3                              StopCar();  // 急刹,停车
+  80   3                              OnFlag = 0;
+  81   3                              TR0 = 0;  // 停止计时
+  82   3                              LED = 1; // 熄灭LED提示灯
+  83   3                              DelayMS(2000);
+  84   3                              FreeCar();   // 待机
+  85   3                      }
+  86   2                      else
+  87   2                      {
+  88   3                              Tracking(); //寻迹
+  89   3                      }
+  90   2              }
+  91   1      }
+  92          
+  93          /* 传感器的信号与电机空中的逻辑判断表                                           7种状态判断
+  94           * ************************************************************************
+  95           *      左AD            中AD                    右AD*   左电机          右电机          状态
+  96           * ************************************************************************
+  97           *  弱                  强                      弱      *       快                      快                      直行
+  98           * ************************************************************************
+  99           *  强                                  弱      *       慢                      快                      弯道左转
+ 100           * ************************************************************************
+ 101           *  弱                                  强      *       快                      慢                      弯道右转
+ 102           * ************************************************************************
+ 103           *  无                          弱      *       慢                      停                      小车偏左差小
+ 104           * ************************************************************************
+ 105           *  无                                  强      *       快                      停                      小车偏左差大
+ 106           * ************************************************************************
+ 107           *  弱                                  无      *       停                      慢                      小车偏右差小
+ 108           * ************************************************************************
+ 109           *  强                                  无      *       停                      快                      小车偏右差大
+ 110           * ************************************************************************
+ 111           */
+ 112          
+ 113          void Tracking(void)
+ 114          {
+ 115   1              /************mid大于70*****直行*********************/
+ 116   1              if (AD_Mid[0] >= 70)
+C51 COMPILER V9.59.0.0   MAIN                                                              05/10/2019 12:23:30 PAGE 3   
+
+ 117   1              {
+ 118   2                      Go_Forward(99);
+ 119   2              }
+ 120   1              /*************mid40-70***直线偏移角小于60°*********************/
+ 121   1              else if (AD_Mid[0] >= 40 && AD_Mid[0] <= 70 )
+ 122   1              {
+ 123   2      
+ 124   2                      /*****************左偏*********************/
+ 125   2                      if (AD_Left[0] >= 30 && AD_Right[0] < 30)
+ 126   2                      {
+ 127   3      
+ 128   3                              if (AD_Left[0] >= 30 && AD_Left[0] < 35)
+ 129   3                              {
+ 130   4                                      Turn(80, 90);
+ 131   4                              }
+ 132   3                              else if (AD_Left[0] >= 35 && AD_Left[0] < 40)
+ 133   3                              {
+ 134   4                                      Turn(75, 90);
+ 135   4                              }
+ 136   3                              else if (AD_Left[0] >= 40 && AD_Left[0] < 45)
+ 137   3                              {
+ 138   4                                      Turn(65, 85);
+ 139   4                              }
+ 140   3                              else if (AD_Left[0] >= 45 && AD_Left[0] < 50)
+ 141   3                              {
+ 142   4                                      Turn(55, 85);
+ 143   4                              }
+ 144   3                              else if (AD_Left[0] >= 50 && AD_Left[0] < 55)
+ 145   3                              {
+ 146   4                                      Turn(40, 80);
+ 147   4                              }
+ 148   3                              else if (AD_Left[0] >= 50 && AD_Left[0] < 60)
+ 149   3                              {
+ 150   4                                      Turn(35, 70);
+ 151   4                              }
+ 152   3                              else
+ 153   3                              {
+ 154   4                                      Turn(0, 60);
+ 155   4                              }
+ 156   3                      }
+ 157   2      
+ 158   2                      /*****************右偏*********************/
+ 159   2                      if (AD_Left[0] < 30 && AD_Right[0] >= 30)
+ 160   2                      {
+ 161   3      
+ 162   3                              if (AD_Right[0] >= 30 && AD_Right[0] < 35)
+ 163   3                              {
+ 164   4                                      Turn(90, 80);
+ 165   4                              }
+ 166   3                              else if (AD_Right[0] >= 35 && AD_Right[0] < 40)
+ 167   3                              {
+ 168   4                                      Turn(90, 75);
+ 169   4                              }
+ 170   3                              else if (AD_Right[0] >= 40 && AD_Right[0] < 45)
+ 171   3                              {
+ 172   4                                      Turn(85, 65);
+ 173   4                              }
+ 174   3                              else if (AD_Right[0] >= 45 && AD_Right[0] < 50)
+ 175   3                              {
+ 176   4                                      Turn(85, 55);
+ 177   4                              }
+ 178   3                              else if (AD_Right[0] >= 50 && AD_Right[0] < 55)
+C51 COMPILER V9.59.0.0   MAIN                                                              05/10/2019 12:23:30 PAGE 4   
+
+ 179   3                              {
+ 180   4                                      Turn(80, 40);
+ 181   4                              }
+ 182   3                              else if (AD_Right[0] >= 50 && AD_Right[0] < 60)
+ 183   3                              {
+ 184   4                                      Turn(70, 35);
+ 185   4                              }
+ 186   3                              else
+ 187   3                              {
+ 188   4                                      Turn(60, 0);
+ 189   4                              }
+ 190   3                      }
+ 191   2              }
+ 192   1              /*************mid小于30****急转弯*********************/
+ 193   1              else
+ 194   1              {
+ 195   2                      /*****************左急转***********************/
+ 196   2                      if (AD_Left[0] > AD_Right[0])
+ 197   2                      {
+ 198   3                              Turn_Left(35, 50);
+ 199   3                      }
+ 200   2                      /*****************右急转**********************/
+ 201   2                      else if(AD_Left[0] < AD_Right[0])
+ 202   2                      {
+ 203   3                              Turn_Right(50, 35);
+ 204   3                      }
+ 205   2                      /***************其余特殊情况*********************/
+ 206   2                      else
+ 207   2                      {
+ 208   3                              Go_Forward(35);
+ 209   3                      }
+ 210   2              }
+ 211   1      }
+ 212          
+ 213          
+ 214          
+ 215          void main(void)
+ 216          {
+ 217   1              GPIO_Init();
+ 218   1              OLED_Init();  // OLED初始化
+ 219   1              PWM_Init();   // PWM初始化
+ 220   1              ADC_Init();   // 电压采集初始化P1口8路均可采集
+ 221   1              TIMER_Init();   // 定时器初始化
+ 222   1              EA = 1;                 // 开启总中断
+ 223   1              DelayUS(100);  //  等待系统初始化完成
+ 224   1              OLED_display_str(1, 20, "SmartCar-V1.0");  // 显示系统准备就绪
+ 225   1              OLED_display_str(3, 0, "Equipment is OK");  // 显示系统准备就绪
+ 226   1              OLED_display_str(5, 0, "Time:      S");  // 显示系统准备就绪
+ 227   1              LED = 0;  // 表示自检完成
+ 228   1              while (1)
+ 229   1              {
+ 230   2                      ADC_Sample();  //  电压采样,并保存;
+ 231   2                      Runing();      //寻迹
+ 232   2                      TimeDispaly();//显示用时
+ 233   2              }
+ 234   1      }
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =    822    ----
+   CONSTANT SIZE    =     43    ----
+   XDATA SIZE       =   ----    ----
+C51 COMPILER V9.59.0.0   MAIN                                                              05/10/2019 12:23:30 PAGE 5   
+
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =     17    ----
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =   ----    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)

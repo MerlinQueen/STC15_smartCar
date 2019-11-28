@@ -1,0 +1,251 @@
+C51 COMPILER V9.59.0.0   OLED_IIC                                                          05/05/2019 20:04:08 PAGE 1   
+
+
+C51 COMPILER V9.59.0.0, COMPILATION OF MODULE OLED_IIC
+OBJECT MODULE PLACED IN .\Objects\OLED_iic.obj
+COMPILER INVOKED BY: f:\Keil_v5\C51\BIN\C51.EXE user\OLED_iic.c OPTIMIZE(8,SPEED) BROWSE DEBUG OBJECTEXTEND PRINT(.\List
+                    -ings\OLED_iic.lst) OBJECT(.\Objects\OLED_iic.obj)
+
+line level    source
+
+   1          #include <STC15.h>
+   2          #include "OLED_iic.h"
+   3          #include "ASCII_image.h"
+   4          
+   5          
+   6          void OLEDdelay(u8 time)
+   7          {
+   8   1              u8 i, j;
+   9   1              for (i = 0; i < time; i++)
+  10   1                      for (j = 0; j < 199; j++);
+  11   1      }
+  12          
+  13          void I2cDelay(u8 IIC_time)
+  14          {
+  15   1              u8 i, j;
+  16   1              for (i = 0; i < IIC_time; i++)
+  17   1                      for (j = 0; j < 12; j++);
+  18   1      }
+  19          
+  20          void IIC_start(void)
+  21          {
+  22   1              SCL = 1;
+  23   1              SDA = 1;
+  24   1              I2cDelay(1);
+  25   1              SDA = 0;
+  26   1      }
+  27          
+  28          void IIC_stop(void)
+  29          {
+  30   1              SCL = 1;
+  31   1              SDA = 0;
+  32   1              I2cDelay(1);
+  33   1              SDA = 1;
+  34   1      }
+  35          
+  36          bit I2cTestAck(void)
+  37          {
+  38   1              bit errorBit;
+  39   1              u8 n = 0;
+  40   1              SCL = 1;
+  41   1              SDA = 1;   // 第九个时钟位如果读取到SDA 被拉低则表示有应答
+  42   1              while ((SDA) && (n < 255))
+  43   1              {
+  44   2                      errorBit = SDA;
+  45   2                      n++;
+  46   2              }
+  47   1              SCL = 0;   // 应答完毕等待下一步操作
+  48   1              return errorBit;  //返回应答结果
+  49   1      }
+  50          
+  51          void I2cWriteDat(u8 I2cInput)
+  52          {
+  53   1              u8 i;
+  54   1              for (i = 0; i < 8; i++)
+C51 COMPILER V9.59.0.0   OLED_IIC                                                          05/05/2019 20:04:08 PAGE 2   
+
+  55   1              {
+  56   2                      SCL = 0;
+  57   2                      I2cDelay(1);
+  58   2                      SDA = (I2cInput & 0x80) >> 7;
+  59   2                      SCL = 1;
+  60   2                      I2cDelay(1);
+  61   2                      I2cInput <<= 1;
+  62   2              }
+  63   1              SCL = 0; // 暂停等待下一步操作
+  64   1      }
+  65          
+  66          void OledWriteCom(u8 Oled_com)   // OLED写命令
+  67          {
+  68   1              IIC_start();
+  69   1      
+  70   1              I2cWriteDat(OledDeviceAddress);   // 写入器件地址
+  71   1              I2cTestAck();
+  72   1      
+  73   1              I2cWriteDat(0x00);   //write com mode
+  74   1              I2cTestAck();
+  75   1      
+  76   1              I2cWriteDat(Oled_com);
+  77   1              I2cTestAck();
+  78   1      
+  79   1              IIC_stop();
+  80   1      }
+  81          void OledWriteDat(u8 Oled_dat)  // OLED写数据
+  82          {
+  83   1              IIC_start();
+  84   1      
+  85   1              I2cWriteDat(OledDeviceAddress);   // 写入器件地址
+  86   1              I2cTestAck();
+  87   1      
+  88   1              I2cWriteDat(0x40);   //write dat mode
+  89   1              I2cTestAck();
+  90   1      
+  91   1              I2cWriteDat(Oled_dat);
+  92   1              I2cTestAck();
+  93   1      
+  94   1              IIC_stop();
+  95   1      }
+  96          
+  97          /*OLED坐标设置*/
+  98          void OLED_set_position(u8 y, u8 x)
+  99          {
+ 100   1              OledWriteCom(0xb0 + y);  // 设置页显示开始y方向 地址b0 - b7
+ 101   1              OledWriteCom(0x00 | (x & 0x0f));  //设置低4位点的列作为页的开始x方向地址
+ 102   1              OledWriteCom(0x10 | ((x & 0xf0 ) >> 4)); // 设置列的高地址作为页的开始x方向地址
+ 103   1      }
+ 104          ///*OLED唤醒*/
+ 105          //void OLED_ON(void)
+ 106          //{
+ 107          //      OledWriteCom(0X8d);  //设置电荷泵
+ 108          //      OledWriteCom(0X14);  //开启电荷泵
+ 109          //      OledWriteCom(0Xaf);
+ 110          //}
+ 111          
+ 112          ///*OLED休眠*/
+ 113          //void OLED_OFF(void)
+ 114          //{
+ 115          //      OledWriteCom(0X8d);  //设置电荷泵
+ 116          //      OledWriteCom(0X10);  //关闭电荷泵
+C51 COMPILER V9.59.0.0   OLED_IIC                                                          05/05/2019 20:04:08 PAGE 3   
+
+ 117          //      OledWriteCom(0Xae);
+ 118          //}
+ 119          
+ 120          /*OLED清屏,全灭*/
+ 121          void OLED_cls(void)
+ 122          {
+ 123   1              u8 x = 0, y = 0;
+ 124   1              for (y = 0; y < 8; y++)
+ 125   1              {
+ 126   2                      OledWriteCom(0xb0 + y); // 逐行清零
+ 127   2                      OledWriteCom(0x00);  //设置列低4位的作为页的开始地址
+ 128   2                      OledWriteCom(0x10); // 设置列高4位作为页的开始地址
+ 129   2                      for (x = 0; x < 128; x++)
+ 130   2                              OledWriteDat(0x00);  // 0x00清屏,0xff全亮
+ 131   2              }
+ 132   1      }
+ 133          
+ 134          
+ 135          void OLED_Init(void)
+ 136          {
+ 137   1              SCL = 1;
+ 138   1              SDA = 1;
+ 139   1              OLEDdelay(500);
+ 140   1              OledWriteCom(0xae);  // 关闭显示
+ 141   1      
+ 142   1              OledWriteCom(0x00);  //设置低一点的列作为页的开始地址
+ 143   1              OledWriteCom(0x10); // 设置列的高地址作为页的开始地址
+ 144   1      
+ 145   1              OledWriteCom(0xd5);  // 设置时钟分频因子,震荡周期
+ 146   1              OledWriteCom(0x80);     // [3:0]分频因子,[7:4]震荡周期
+ 147   1      
+ 148   1              OledWriteCom(0xa8);     // 设置驱动路数
+ 149   1              OledWriteCom(0x3f);     // 默认0x3f
+ 150   1      
+ 151   1              OledWriteCom(0xd3); // 设置显示偏移
+ 152   1              OledWriteCom(0x00);     // 0.96存默认显示偏移为0
+ 153   1      
+ 154   1              OledWriteCom(0x40); // 设置显示开始行[5:0],行数
+ 155   1      
+ 156   1              OledWriteCom(0x8d); // 电荷泵设置
+ 157   1              OledWriteCom(0x14); // bit2 = 1开启0x14,bit2 = 0关闭 0x10;
+ 158   1      
+ 159   1              OledWriteCom(0x20); // 设置内存地址模式
+ 160   1              OledWriteCom(0x02); // [1:0],00 列地址模式,  02页地址模式
+ 161   1      
+ 162   1              OledWriteCom(0xa1); // 重定义设置
+ 163   1              OledWriteCom(0xc8); // 设置com扫描防线[3:0]0xa0左右反置 0xa1正常 0xc0上下反置 0xc8正常
+ 164   1      
+ 165   1              OledWriteCom(0xda); // 设置COm硬件引脚配置
+ 166   1              OledWriteCom(0x12); // [5:4]配置
+ 167   1      
+ 168   1              OledWriteCom(0x81); // 对比度设置
+ 169   1              OledWriteCom(0xcf);  // 1-255 数值越大亮度越高
+ 170   1      
+ 171   1              OledWriteCom(0xd9); // 设置预充电周期
+ 172   1              OledWriteCom(0xf1); // [3:0] 时期1, [7:4] 时期2
+ 173   1      
+ 174   1              OledWriteCom(0xdb); // 设置电压倍率
+ 175   1              OledWriteCom(0x40); // [6:4]  00,0.65*vcc,10  0.77*vcc, 30 0.83vcc, 40 vcc
+ 176   1      
+ 177   1              OledWriteCom(0xa4); // 全区显示开始起  0xa4开启,0xa5关闭
+ 178   1              OledWriteCom(0xa6); // 设置显示方式 0xa6 正常显示, 0xa7反向显示
+C51 COMPILER V9.59.0.0   OLED_IIC                                                          05/05/2019 20:04:08 PAGE 4   
+
+ 179   1              OLED_cls();               // 初始清屏
+ 180   1              OledWriteCom(0xaf);  // 开启显示
+ 181   1      }
+ 182          
+ 183          
+ 184          
+ 185          
+ 186          /*   在(0-8)y行,(0-16)x列  显示字符串 *****每个字(6*8像素) */
+ 187          void OLED_display_str(u8 y,u8 x,u8 *input_str)
+ 188          {
+ 189   1              u8 i,ascii_num = 0;  // ascii_num表示字符串对应的ASCII编码数值
+ 190   1              while (*input_str != '\0')
+ 191   1              {
+ 192   2                      if (y > 7)       y%= 7;
+ 193   2                      if (x > 120) {x = 0; y++;}
+ 194   2                      OLED_set_position(y, x);      // 设置显示位置
+ 195   2                      ascii_num = *input_str - 32;
+ 196   2                      for (i = 0; i < 6; i++)
+ 197   2                      {
+ 198   3                              OledWriteDat(Str6x8_code[ascii_num][i]); // 送入字符串对应的数据码
+ 199   3                      }
+ 200   2                      x += 6;
+ 201   2                      input_str++;
+ 202   2              }
+ 203   1      }
+ 204          
+ 205          ///* 显示ACII_image.h中的汉字,16*16点阵*/
+ 206          //void OLED_Show_Chinese(u8 y, u8 x, u8 N)
+ 207          //{
+ 208          //      u8 i, row = 0;
+ 209          //      row = N * 2;
+ 210          //      OLED_set_position(y, x);
+ 211          //      for (i = 0; i < 16; i++)
+ 212          //      {
+ 213          //              OledWriteDat(Chinese_code[row][i]);
+ 214          //      }
+ 215          
+ 216          //      OLED_set_position(y + 1, x); // 分两个8*8显示  取模软件列行模式
+ 217          //      for (i = 0; i < 16; i++)
+ 218          //      {
+ 219          //              OledWriteDat(Chinese_code[row + 1][i]);
+ 220          //      }
+ 221          //}
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =    592    ----
+   CONSTANT SIZE    =   ----    ----
+   XDATA SIZE       =    552    ----
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =   ----       7
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =   ----       1
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)

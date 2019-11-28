@@ -1,0 +1,274 @@
+C51 COMPILER V9.59.0.0   OLED_SPI_HARDWARE                                                 05/10/2019 12:23:31 PAGE 1   
+
+
+C51 COMPILER V9.59.0.0, COMPILATION OF MODULE OLED_SPI_HARDWARE
+OBJECT MODULE PLACED IN .\Objects\OLED_SPI_hardware.obj
+COMPILER INVOKED BY: f:\Keil_v5\C51\BIN\C51.EXE user\OLED_SPI_hardware.c OPTIMIZE(8,SPEED) BROWSE DEBUG OBJECTEXTEND PRI
+                    -NT(.\Listings\OLED_SPI_hardware.lst) OBJECT(.\Objects\OLED_SPI_hardware.obj)
+
+line level    source
+
+   1          #include "OLED_SPI_hardware.h"
+   2          #include "ASCII_image.h"
+   3          
+   4          void SPIdelayMS(u16 MS)
+   5          {
+   6   1              u8 i, j;
+   7   1              for ( i = 0; i < MS; i++)
+   8   1                      for (j = 0; j < 200; j++);
+   9   1      }
+  10          void SPI_init(void)
+  11          {
+  12   1              
+  13   1              AUXR1 = AUXR1|0x04;  // 辅助寄存器配置,配置高速SPI的端口 SSP2.4,MOSI 2.3,MISO 2.2,SCLK 2.1
+  14   1              SPDAT = 0;   // SPDAT初始化
+  15   1              SPSTAT = 0xc0;  // 清0 SPIF 和WCOL    
+  16   1      //      SPCTL = 0xd0;   // SPCTL = 0xdc ,0xd0
+  17   1              SPCTL = (SSIG << 7) |(SPEN << 6) | (DORD << 5) | (MSTR << 4) | (CPOL << 3) | (CPHA << 2) | (SPR1 << 1) | 
+             -SPR0;
+  18   1              // SPI countrol 初始化
+  19   1      }
+  20          
+  21          void spiWriteDat(u8 SPI_dat)
+  22          {
+  23   1              SPDAT = SPI_dat; // 发送数据
+  24   1              while (!(SPSTAT & SPIF)); //等待数据发送完成SPIF 0x80 
+  25   1              SPSTAT = 0Xc0;  // 清0 SPIF 和WCOL
+  26   1      }
+  27          
+  28          void OledWriteCom(u8 Oled_com)
+  29          {
+  30   1              // CPOL= 0,CPHA = 0 奇次边沿采样 空闲时,SCLK 为低电平, 上升沿采样
+  31   1              OLED_DC = 0; // 0 ,write com
+  32   1              OLED_CS = 0;   // 片选信号拉低,开始发送数据
+  33   1              spiWriteDat(Oled_com);
+  34   1              OLED_CS = 1;
+  35   1      }
+  36          
+  37          void OledWriteDat(u8 Oled_dat)
+  38          {
+  39   1      
+  40   1              OLED_DC = 1; // 1 ,write dat
+  41   1              OLED_CS = 0;   // 片选信号拉低,开始发送数据
+  42   1              spiWriteDat(Oled_dat);
+  43   1              OLED_CS = 1;
+  44   1      }
+  45          
+  46          /*OLED坐标设置*/
+  47          void OLED_set_position(u8 y, u8 x)
+  48          {
+  49   1              OledWriteCom(0xb0 + y);  // 设置页显示开始y方向 地址b0 - b7
+  50   1              OledWriteCom(0x00 | (x & 0x0f));  //设置低4位点的列作为页的开始x方向地址
+  51   1              OledWriteCom(0x10 | ((x & 0xf0 ) >> 4)); // 设置列的高地址作为页的开始x方向地址
+  52   1      }
+  53          ///*OLED唤醒*/
+C51 COMPILER V9.59.0.0   OLED_SPI_HARDWARE                                                 05/10/2019 12:23:31 PAGE 2   
+
+  54          //void OLED_ON(void)
+  55          //{
+  56          //      OledWriteCom(0X8d);  //设置电荷泵
+  57          //      OledWriteCom(0X14);  //开启电荷泵
+  58          //      OledWriteCom(0Xaf);
+  59          //}
+  60          ///*OLED休眠*/
+  61          //void OLED_OFF(void)
+  62          //{
+  63          //      OledWriteCom(0X8d);  //设置电荷泵
+  64          //      OledWriteCom(0X10);  //关闭电荷泵
+  65          //      OledWriteCom(0Xae);
+  66          //}
+  67          
+  68          /*OLED清屏,全灭*/
+  69          void OLED_cls(void)
+  70          {
+  71   1              u8 x = 0, y = 0;
+  72   1              for (y = 0; y < 8; y++)
+  73   1              {
+  74   2                      OledWriteCom(0xb0 + y); // 逐行清零
+  75   2                      OledWriteCom(0x00);  //设置列低4位的作为页的开始地址
+  76   2                      OledWriteCom(0x10); // 设置列高4位作为页的开始地址
+  77   2                      for (x = 0; x < 128; x++)
+  78   2                              OledWriteDat(0x00);  // 0x00清屏,0xff全亮
+  79   2              }
+  80   1      }
+  81          
+  82          
+  83          void OLED_Init(void)
+  84          {
+  85   1              P2M0 = 0x00;
+  86   1              P2M1 = 0x00;
+  87   1              OLED_RES = 1;
+  88   1              SPIdelayMS(50);
+  89   1              OLED_RES = 0;  // 低电平,复位信号输入;
+  90   1              SPIdelayMS(50);
+  91   1              OLED_RES = 1;
+  92   1              SPI_init();
+  93   1              SPIdelayMS(100);   //开机前延时
+  94   1              OledWriteCom(0xae);  // 关闭显示
+  95   1      
+  96   1              OledWriteCom(0x00);  //设置低一点的列作为页的开始地址
+  97   1              OledWriteCom(0x10); // 设置列的高地址作为页的开始地址
+  98   1      
+  99   1              OledWriteCom(0xd5);  // 设置时钟分频因子,震荡周期
+ 100   1              OledWriteCom(0x80);     // [3:0]分频因子,[7:4]震荡周期
+ 101   1      
+ 102   1              OledWriteCom(0xa8);     // 设置驱动路数
+ 103   1              OledWriteCom(0x3f);     // 默认0x3f
+ 104   1      
+ 105   1              OledWriteCom(0xd3); // 设置显示偏移
+ 106   1              OledWriteCom(0x00);     // 0.96存默认显示偏移为0
+ 107   1      
+ 108   1              OledWriteCom(0x40); // 设置显示开始行[5:0],行数
+ 109   1      
+ 110   1              OledWriteCom(0x8d); // 电荷泵设置
+ 111   1              OledWriteCom(0x14); // bit2 = 1开启0x14,bit2 = 0关闭 0x10;
+ 112   1      
+ 113   1              OledWriteCom(0x20); // 设置内存地址模式
+ 114   1              OledWriteCom(0x02); // [1:0],00 列地址模式,  02页地址模式
+ 115   1      
+C51 COMPILER V9.59.0.0   OLED_SPI_HARDWARE                                                 05/10/2019 12:23:31 PAGE 3   
+
+ 116   1              OledWriteCom(0xa1); // 重定义设置
+ 117   1              OledWriteCom(0xc8); // 设置com扫描防线[3:0]0xa0左右反置 0xa1正常 0xc0上下反置 0xc8正常
+ 118   1      
+ 119   1              OledWriteCom(0xda); // 设置COm硬件引脚配置
+ 120   1              OledWriteCom(0x12); // [5:4]配置
+ 121   1      
+ 122   1              OledWriteCom(0x81); // 对比度设置
+ 123   1              OledWriteCom(0xcf);  // 1-255 数值越大亮度越高
+ 124   1      
+ 125   1              OledWriteCom(0xd9); // 设置预充电周期
+ 126   1              OledWriteCom(0xf1); // [3:0] 时期1, [7:4] 时期2
+ 127   1      
+ 128   1              OledWriteCom(0xdb); // 设置电压倍率
+ 129   1              OledWriteCom(0x40); // [6:4]  00,0.65*vcc,10  0.77*vcc, 30 0.83vcc, 40 vcc
+ 130   1      
+ 131   1              OledWriteCom(0xa4); // 全区显示开始起  0xa4开启,0xa5关闭
+ 132   1              OledWriteCom(0xa6); // 设置显示方式 0xa6 正常显示, 0xa7反向显示
+ 133   1              OLED_cls();               // 初始清屏
+ 134   1              OledWriteCom(0xaf);  // 开启显示
+ 135   1      }
+ 136          
+ 137          ///*   在(0-8)y行,(0-16)x列  显示字符串 *****z字体大小1号/2号 */
+ 138          //void OLED_display_str(u8 y, u8 x, u8 *input_str, u8 font_size)
+ 139          //{
+ 140          //      u8 i, ascii_num = 0;  // ascii_num表示字符串对应的ASCII编码数值
+ 141          //      if (font_size == 1)
+ 142          //      {
+ 143          //              while (*input_str != '\0')
+ 144          //              {
+ 145          //                      if (y > 7) y %= 7;
+ 146          //                      if (x > 120) {x = 0; y++;}
+ 147          //                      OLED_set_position(y, x);      // 设置显示位置
+ 148          //                      ascii_num = *input_str - 32;
+ 149          //                      for (i = 0; i < 6; i++)
+ 150          //                      {
+ 151          //                              OledWriteDat(Str6x8_code[ascii_num][i]); // 送入字符串对应的数据码
+ 152          //                      }
+ 153          //                      x += 6;
+ 154          //                      input_str++;
+ 155          //              }
+ 156          //      }
+ 157          //      else
+ 158          //      {
+ 159          //              while (*input_str != '\0')
+ 160          //              {
+ 161          //                      if (y > 7) y %= 7;
+ 162          //                      if (x > 120) {x = 0; y++;}
+ 163          //                      OLED_set_position(y, x);      // 设置显示位置
+ 164          //                      ascii_num = *input_str - 32;
+ 165          //                      for (i = 0; i < 16; i++)
+ 166          //                      {
+ 167          //                              OledWriteDat(Str8x16_code[ascii_num][i]); // 送入字符串对应的数据码
+ 168          //                      }
+ 169          //                      x += 8;
+ 170          //                      input_str++;
+ 171          //              }
+ 172          //      }
+ 173          //}
+ 174          
+ 175          
+ 176          ///*   在(0-8)y行,(0-16)x列  显示字符串 *****每个字(6*8像素) */
+ 177          void OLED_display_str(u8 y, u8 x, u8 *input_str)
+C51 COMPILER V9.59.0.0   OLED_SPI_HARDWARE                                                 05/10/2019 12:23:31 PAGE 4   
+
+ 178          {
+ 179   1              u8 i, ascii_num = 0;  // ascii_num表示字符串对应的ASCII编码数值
+ 180   1              while (*input_str != '\0')
+ 181   1              {
+ 182   2                      if (y > 7) y %= 7;
+ 183   2                      if (x > 120) {x = 0; y++;}
+ 184   2                      OLED_set_position(y, x);      // 设置显示位置
+ 185   2                      ascii_num = *input_str - 32;
+ 186   2                      for (i = 0; i < 6; i++)
+ 187   2                      {
+ 188   3                              OledWriteDat(Str6x8_code[ascii_num][i]); // 送入字符串对应的数据码
+ 189   3                      }
+ 190   2                      x += 6;
+ 191   2                      input_str++;
+ 192   2              }
+ 193   1      }
+ 194          ///* 显示ACII_image.h中的汉字,16*16点阵*/
+ 195          //void OLED_Show_Chinese(u8 y, u8 x, u8 N)
+ 196          //{
+ 197          //      u8 i, row = 0;
+ 198          //      row = N * 2;  // 每个汉字又两组8*16点阵组成
+ 199          //      OLED_set_position(y, x);
+ 200          //      for (i = 0; i < 16; i++)
+ 201          //      {
+ 202          //              OledWriteDat(Chinese_code[row][i]);
+ 203          //      }
+ 204          
+ 205          //      OLED_set_position(y + 1, x); // 分两个8*8显示
+ 206          //      for (i = 0; i < 16; i++)
+ 207          //      {
+ 208          //              OledWriteDat(Chinese_code[row + 1][i]);
+ 209          //      }
+ 210          //}
+ 211          
+ 212          /*void OLED_DrawBMP(u8 y0, u8 x0, u8 y1, u8 x1, u8 N_bmp)
+ 213          {
+ 214                  u16 j = 0;
+ 215                  u8 x, y;
+ 216                  if (y1 % 8 == 0) y = y1 / 8;
+ 217                  else y = y1 / 8 + 1;
+ 218          //      if(N_bmp == 0)
+ 219          //      {
+ 220          //              for(y=y0;y<y1;y++)
+ 221          //              {
+ 222          //                      OLED_set_position(y,x0);
+ 223          //                      for(x=x0;x<x1;x++)
+ 224          //                      {
+ 225          //                              OledWriteDat(BMP0[j++]);
+ 226          //                      }
+ 227          //              }
+ 228          //      }
+ 229                  if (N_bmp == 1)
+ 230                  {
+ 231                          for (y = y0; y < y1; y++)
+ 232                          {
+ 233                                  OLED_set_position(y, x0);
+ 234                                  for (x = x0; x < x1; x++)
+ 235                                  {
+ 236                                          OledWriteDat(BMP1[j++]);
+ 237                                  }
+ 238                          }
+ 239                  }
+C51 COMPILER V9.59.0.0   OLED_SPI_HARDWARE                                                 05/10/2019 12:23:31 PAGE 5   
+
+ 240          }
+ 241          */
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =    428    ----
+   CONSTANT SIZE    =   ----    ----
+   XDATA SIZE       =    552    ----
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =   ----       2
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =   ----    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)

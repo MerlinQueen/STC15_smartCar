@@ -1,0 +1,8 @@
+".\Objects\ADC.obj",
+".\Objects\delay.obj",
+".\Objects\main.obj",
+".\Objects\pwm.obj",
+".\Objects\timer.obj",
+".\Objects\OLED_SPI_hardware.obj" 
+TO ".\Objects\smartcar" 
+PRINT(".\Listings\smartcar.m51") RAMSIZE(256) 

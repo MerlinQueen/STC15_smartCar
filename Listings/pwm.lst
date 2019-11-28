@@ -1,0 +1,190 @@
+C51 COMPILER V9.59.0.0   PWM                                                               05/10/2019 12:23:30 PAGE 1   
+
+
+C51 COMPILER V9.59.0.0, COMPILATION OF MODULE PWM
+OBJECT MODULE PLACED IN .\Objects\pwm.obj
+COMPILER INVOKED BY: f:\Keil_v5\C51\BIN\C51.EXE user\pwm.c OPTIMIZE(8,SPEED) BROWSE DEBUG OBJECTEXTEND PRINT(.\Listings\
+                    -pwm.lst) OBJECT(.\Objects\pwm.obj)
+
+line level    source
+
+   1          #include <STC15.h>
+   2          #include "pwm.h"
+   3          #define CYCLE   0x7000L     //定义PWM周期(最大值为32767)  ,28627,周期只影响精度
+   4          
+   5          sbit PWM3 = P4 ^ 5;
+   6          sbit PWM4 = P4 ^ 4; //左电机 PWM输出管脚定义
+   7          
+   8          sbit PWM6 = P0 ^ 6;
+   9          sbit PWM7 = P0 ^ 7;     //右电机 PWM输出管脚定义
+  10          
+  11          
+  12          void PWM_Init(void)
+  13          {
+  14   1              P_SW2 |= 0x80;                                  //使能访问PWM在扩展RAM区的特殊功能寄存器XSFR
+  15   1              PWMCFG = 0x00;                  //配置PWM的输出初始电平为低电平,即第一次翻转电平为低电平
+  16   1              PWMCKS = 0x03;                  //选择PWM的时钟为Fosc/(0+1)   系统时钟4分频
+  17   1              PWMC = CYCLE;                   //设置PWM周期,定义PWM周期(最大值为32767)
+  18   1      
+  19   1              PWM3CR = 0x08;                  //选择PWM2输出到P4.5,不使能中断
+  20   1              PWM4CR = 0x08;                                  //选择PWM2输出到P4.4,不使能中断
+  21   1              PWM6CR = 0x08;                                  //选择PWM2输出到P0.6,不使能中断
+  22   1              PWM7CR = 0x08;                                  //选择PWM2输出到P0.7,不使能中断
+  23   1      
+  24   1              PWM3T1 = 0x0001;                                // 设置第一次翻转时间
+  25   1              PWM3T2 = 0;                                             // 设置第一次翻转时间
+  26   1              PWM4T1 = 0x0001;
+  27   1              PWM4T2 = 0;
+  28   1              PWM6T1 = 0x0001;                 // 防止翻转时间全为0 ,产生竞争
+  29   1              PWM6T2 = 0;
+  30   1              PWM7T1 = 0x0001;
+  31   1              PWM7T2 = 0;
+  32   1              PWMCR |= 0x80;                  //使能PWM模块
+  33   1              P_SW2 &= ~0x80;
+  34   1      }
+  35          
+  36          void PWM1_Out(unsigned int Duty) // 输出范围0-100
+  37          {
+  38   1              if (Duty > 100)   // Duty=0 时,IO口输出低电平
+  39   1              {
+  40   2                      PWMCR &= ~(1 << 1); // 设置引脚P4.5状态为通用IO,IO口复用
+  41   2                      PWM3 = 0;
+  42   2              }
+  43   1              else
+  44   1              {
+  45   2                      P_SW2 |= 0x80;           // 开启XSRF
+  46   2                      PWM3T1 = 0x0001;
+  47   2                      PWM3T2 = CYCLE * Duty / 100;    // 重新设置翻转时间,即高电平持续时间
+  48   2                      P_SW2 &= ~0x80;                 // 关闭XSRF
+  49   2                      PWMCR |= (1 << 1); // 开启PWM3输出
+  50   2              }
+  51   1      }
+  52          
+  53          void PWM2_Out(unsigned int Duty) // 输出范围0-100
+  54          {
+C51 COMPILER V9.59.0.0   PWM                                                               05/10/2019 12:23:30 PAGE 2   
+
+  55   1              if (Duty > 100)   // Duty=0 时,IO口输出低电平
+  56   1              {
+  57   2                      PWMCR &= ~(1 << 2); // 设置引脚P4.4状态为通用IO,IO口复用
+  58   2                      PWM4 = 0;
+  59   2              }
+  60   1              else
+  61   1              {
+  62   2                      P_SW2 |= 0x80;
+  63   2                      PWM4T1 = 0x0001;
+  64   2                      PWM4T2 = CYCLE * Duty / 100;    // 重新设置翻转时间,即高电平持续时间
+  65   2                      P_SW2 &= ~0x80;
+  66   2                      PWMCR |= (1 << 2); // 开启PWM3输出
+  67   2              }
+  68   1      }
+  69          
+  70          void PWM3_Out(unsigned int Duty) // 输出范围0-100
+  71          {
+  72   1              if (Duty > 100)   // Duty=0 时,IO口输出低电平
+  73   1              {
+  74   2                      PWMCR &= ~(1 << 5); //设置引脚P0.7状态为通用IO
+  75   2                      PWM7 = 0;
+  76   2              }
+  77   1              else
+  78   1              {
+  79   2                      P_SW2 |= 0x80;
+  80   2                      PWM7T1 = 0x0001;
+  81   2                      PWM7T2 = CYCLE * Duty / 100;    // 重新设置翻转时间,即高电平持续时间
+  82   2                      P_SW2 &= ~0x80;
+  83   2                      PWMCR |= (1 << 5); // 开启PWM3输出
+  84   2              }
+  85   1      }
+  86          
+  87          void PWM4_Out(unsigned int Duty) // 输出范围0-100
+  88          {
+  89   1              if (Duty > 100)   // Duty=0 时,IO口输出低电平
+  90   1              {
+  91   2                      PWMCR &= ~(1 << 4); //设置引脚P0.6状态为通用IO
+  92   2                      PWM6 = 0;
+  93   2              }
+  94   1              else
+  95   1              {
+  96   2                      P_SW2 |= 0x80;
+  97   2                      PWM6T1 = 0x0001;
+  98   2                      PWM6T2 = CYCLE * Duty / 100;    // 重新设置翻转时间,即高电平持续时间
+  99   2                      P_SW2 &= ~0x80;
+ 100   2                      PWMCR |= (1 << 4); // 开启PWM3输出
+ 101   2              }
+ 102   1      }
+ 103          
+ 104          
+ 105          void Go_Forward(unsigned int Speed)  // 转速设置0-100 ,0停止1全速前进
+ 106          {
+ 107   1              PWM1_Out(Speed);
+ 108   1              PWM2_Out(0);
+ 109   1      
+ 110   1              PWM3_Out(Speed);
+ 111   1              PWM4_Out(0);
+ 112   1      }
+ 113          
+ 114          void Turn_Left(unsigned int vl,unsigned int vr)  // 设置左转:转速,角度
+ 115          {
+ 116   1               PWM1_Out(0);
+C51 COMPILER V9.59.0.0   PWM                                                               05/10/2019 12:23:30 PAGE 3   
+
+ 117   1               PWM2_Out(vl);                  //  右轮速度大于左轮,左转
+ 118   1      
+ 119   1               PWM3_Out(vr);
+ 120   1               PWM4_Out(0);
+ 121   1      }
+ 122          
+ 123          void Turn_Right(unsigned int vl,unsigned int vr) // 设置右转:转速,角度
+ 124          {
+ 125   1               PWM1_Out(vl);
+ 126   1               PWM2_Out(0);
+ 127   1                                              // 右轮速度小于左轮,右转
+ 128   1               PWM3_Out(0);
+ 129   1               PWM4_Out(vr);
+ 130   1      }
+ 131          
+ 132          
+ 133          void Turn(unsigned int vl,unsigned int vr) // 设置右转:转速,角度
+ 134          {
+ 135   1               PWM1_Out(vl);
+ 136   1               PWM2_Out(0);
+ 137   1                                              // 右轮速度小于左轮,右转
+ 138   1               PWM3_Out(vr);
+ 139   1               PWM4_Out(0);
+ 140   1      }
+ 141          
+ 142          
+ 143          void StopCar(void)
+ 144          {
+ 145   1              PWM1_Out(1);
+ 146   1              PWM2_Out(1);
+ 147   1      
+ 148   1              PWM3_Out(1);
+ 149   1              PWM4_Out(1);
+ 150   1      }
+ 151          
+ 152          void FreeCar(void)
+ 153          {
+ 154   1              PWM1_Out(0);
+ 155   1              PWM2_Out(0);
+ 156   1      
+ 157   1              PWM3_Out(0);
+ 158   1              PWM4_Out(0);
+ 159   1      }
+ 160          
+ 161          
+ 162          
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =    485    ----
+   CONSTANT SIZE    =   ----    ----
+   XDATA SIZE       =   ----    ----
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =   ----      10
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =   ----    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)
